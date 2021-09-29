@@ -1,0 +1,88 @@
+kind: pipeline
+type: docker
+name: default
+
+steps:
+  - name: redis-wait
+    image: redis
+    commands:
+      - failure=0
+      - while [ true ]; do
+      - redis-cli -h redis ping
+      - if [ $? -eq 0 ];then exit 0; fi
+      - sleep 1
+      - failure=$[$failure+1]
+      - if [ $failure -gt 30 ]; then exit 1; fi
+      - echo "Waiting for redis..."
+      - done
+
+  - name: redis-test
+    image: redis
+    commands:
+      - sleep 5
+      - redis-cli -h redis ping
+      - redis-cli -h redis set COUNTER 0
+      - redis-cli -h redis get COUNTER
+    depends_on:
+      - redis-wait
+
+  - name: go-build
+    image: golang
+    volumes:
+      - name: gomodcache
+        path: /go/pkg/mod
+    commands:
+      - go test ./...
+      - go build -v -o out
+      - ls -l out
+    environment:
+      GOARCH: amd64
+      GOOS: linux
+    depends_on:
+      - redis-test
+
+  - name: show-result
+    image: ubuntu:20.04
+    commands:
+      - apt -y update
+      - apt-get install -y file
+      - ls -l out
+      - file out
+    depends_on:
+      - go-build
+
+  - name: exec-01
+    image: ubuntu:20.04
+    commands:
+      - ./out COUNTER redis
+    depends_on:
+      - go-build
+
+  - name: exec-02
+    image: ubuntu:20.04
+    commands:
+      - ./out COUNTER redis
+    depends_on:
+      - go-build
+
+  - name: exec-03
+    image: ubuntu:20.04
+    commands:
+      - ./out COUNTER redis
+    depends_on:
+      - go-build
+
+  - name: finish
+    image: alpine:latest
+    commands:
+      - ls -la
+    depends_on:
+      - show-result
+      - exec-01
+      - exec-02
+      - exec-03
+
+services:
+  - name: redis
+    image: redis
+
