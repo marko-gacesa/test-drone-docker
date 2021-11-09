@@ -3,6 +3,11 @@ type: docker
 name: default
 
 steps:
+  - name: env
+    image: alpine:latest
+    commands:
+      - env | sort
+
   - name: redis-wait
     image: redis
     commands:
